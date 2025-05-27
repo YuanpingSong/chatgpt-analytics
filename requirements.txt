@@ -1,0 +1,40 @@
+# --- Core data wrangling & plotting ---------------------------------
+pandas>=2.2.2
+numpy>=1.26.4
+matplotlib>=3.9.0
+
+# --- Time-zone / date helpers ---------------------------------------
+python-dateutil>=2.9.0
+pytz>=2024.1           # zoneinfo is std-lib, but script currently imports pytz
+tzdata>=2024.1         # needed on Windows / some minimal containers
+
+# --- Token counting & model pricing ---------------------------------
+tiktoken>=0.6.0        # exact tokenizer for GPT-3.5/4
+regex>=2024.4          # tiktoken dependency; include explicitly
+
+# --- Graph / tree visualisation (optional but handy) ---------------
+networkx>=3.3
+graphviz>=0.20.3
+
+# --- Interactive notebooks & widgets --------------------------------
+jupyterlab>=4.1.6      # full Jupyter experience
+notebook>=7.2.0        # classic interface (fallback)
+ipykernel>=6.29.4
+ipywidgets>=8.1.2
+nbformat>=5.10.4
+nbclient>=0.10.0
+
+# --- Misc utilities (progress, rich CLI, HTML parsing) -------------
+tqdm>=4.66.4
+rich>=13.7.1
+beautifulsoup4>=4.12.3
+lxml>=5.2.1
+
+# --- Optional statistical / plotting niceties ----------------------
+seaborn>=0.13.2        # not required, but nice for quick plots
+plotly>=5.21.0         # interactive charts if wanted
+
+# --- Linting / testing (developer-side; safe to over-include) -------
+pytest>=8.2.1
+ruff>=0.4.4
+nbval>=0.11.0
