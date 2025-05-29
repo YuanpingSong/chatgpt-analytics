@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 
-import ai_heatmap as heat
+import chatgpt_analysis as heat
 
 SAMPLE = ROOT / 'samples/node-js-network-libraries.json'
 
