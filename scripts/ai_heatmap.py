@@ -61,10 +61,13 @@ def extract_messages(convs: Iterable[dict]) -> List[Message]:
             text = ""
             if isinstance(content, dict):
                 if ctype == "text" and isinstance(content.get("parts"), list):
-                    text = "\n".join(content.get("parts", []))
+                    # a message can have images, we will ignore them for now
+                    parts = list(filter(lambda x: isinstance(x, str), content.get("parts", [])))
+                    text = "\n".join(parts)
                 else:
                     text = content.get("text") or ""
-                    text = text or "".join(content.get("parts", []))
+                    parts = list(filter(lambda x: isinstance(x, str), content.get("parts", [])))
+                    text = text or "\n".join(parts)
             model = msg.get("metadata", {}).get("model_slug")
             metadata = msg.get("metadata", {})
             messages.append(
@@ -109,13 +112,71 @@ def token_counter(text: str, model: Optional[str]) -> int:
     return max(1, int(len(text) / 4))
 
 
-def build_dataframe(messages: Iterable[Message], tz: str) -> pd.DataFrame:
-    rows = []
+def calculate_conversation_tokens(messages: List[Message]) -> Dict[str, Dict[str, int]]:
+    """
+    Calculate actual input/output tokens for each message considering conversation context.
+    
+    In conversational AI:
+    - Each assistant response uses the entire conversation history as input context
+    - User messages don't incur API costs (they're just added to context)
+    - Input tokens = all previous messages in the conversation
+    - Output tokens = only the current assistant response
+    """
+    # Group messages by conversation
+    conv_messages = defaultdict(list)
     for msg in messages:
+        conv_messages[msg.conv_id].append(msg)
+    
+    # Sort messages by timestamp within each conversation
+    for conv_id in conv_messages:
+        conv_messages[conv_id].sort(key=lambda x: x.create_time)
+    
+    token_data = {}
+    
+    for conv_id, msgs in conv_messages.items():
+        conversation_history = []
+        
+        for i, msg in enumerate(msgs):
+            if msg.role == "assistant":
+                # For assistant messages, input tokens = all previous context
+                # This represents the actual cost of processing the conversation history
+                context_text = "\n".join([m.content for m in conversation_history])
+                input_tokens = token_counter(context_text, msg.model)
+                output_tokens = token_counter(msg.content, msg.model)
+            elif msg.role == "user":
+                # User messages don't directly incur API costs
+                # They become part of the context for the next assistant response
+                input_tokens = 0
+                output_tokens = 0
+            else:
+                # For other roles (system, tool, etc.)
+                input_tokens = 0
+                output_tokens = 0
+            
+            token_data[msg.msg_id] = {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens
+            }
+            
+            # Add current message to conversation history for next iteration
+            conversation_history.append(msg)
+    
+    return token_data
+
+
+def build_dataframe(messages: Iterable[Message], tz: str) -> pd.DataFrame:
+    messages_list = list(messages)
+    token_data = calculate_conversation_tokens(messages_list)
+    
+    rows = []
+    for msg in messages_list:
         local_dt = (
             datetime.fromtimestamp(msg.create_time, tz=timezone.utc)
             .astimezone(pytz.timezone(tz))
         )
+        
+        msg_tokens = token_data.get(msg.msg_id, {"input_tokens": 0, "output_tokens": 0})
+        
         rows.append(
             {
                 "conv_id": msg.conv_id,
@@ -127,12 +188,12 @@ def build_dataframe(messages: Iterable[Message], tz: str) -> pd.DataFrame:
                 "dt": local_dt,
                 "metadata": msg.metadata,
                 "tokens": token_counter(msg.content, msg.model),
+                "input_tokens": msg_tokens["input_tokens"],
+                "output_tokens": msg_tokens["output_tokens"],
             }
         )
     df = pd.DataFrame(rows)
     df["date"] = df["dt"].dt.date
-    df["input_tokens"] = np.where(df["role"] == "user", df["tokens"], 0)
-    df["output_tokens"] = np.where(df["role"] == "assistant", df["tokens"], 0)
     return df
 
 
@@ -178,6 +239,17 @@ def aggregate_by_model(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
     return agg
+
+
+def format_model_stats_display(model_stats: pd.DataFrame) -> pd.DataFrame:
+    """Format model stats with token counts in millions for better readability."""
+    display_stats = model_stats.copy()
+    display_stats["input_tokens_M"] = (display_stats["input_tokens"] / 1_000_000).round(2)
+    display_stats["output_tokens_M"] = (display_stats["output_tokens"] / 1_000_000).round(2)
+    
+    # Reorder columns to show millions first, then raw counts
+    columns = ["model", "conversations", "messages", "input_tokens_M", "output_tokens_M", "input_tokens", "output_tokens"]
+    return display_stats[columns]
 
 
 def estimate_cost(df: pd.DataFrame) -> pd.DataFrame:
@@ -265,8 +337,11 @@ def main() -> None:
     advanced = detect_advanced_features(df)
     adv_count = advanced.sum()
     print(f"Advanced feature messages: {adv_count}")
-    print(model_stats)
+    print("\nModel Statistics (token counts in millions):")
+    print(format_model_stats_display(model_stats))
+    print("\nCost Estimates:")
     print(costs)
+    print("\nSubscription Value Analysis:")
     print(value)
 
 
