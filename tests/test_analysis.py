@@ -39,7 +39,7 @@ def test_token_totals_sample():
     msgs = heat.extract_messages(convs)
     heat.assign_user_models(msgs)
     df = heat.build_dataframe(msgs, 'UTC')
-    assert df['input_tokens'].sum() == 435
+    assert df['input_tokens'].sum() == 432
     assert df['output_tokens'].sum() == 909
 
 

@@ -40,6 +40,8 @@ class Message:
     content_type: str
     model: Optional[str]
     metadata: Dict
+    tokens: int = 0
+    context_tokens: int = 0
 
 
 def load_conversations(path: str) -> List[dict]:
@@ -96,6 +98,9 @@ def assign_user_models(messages: List[Message]) -> None:
     for m in messages:
         if m.role == "user" and not m.model:
             m.model = model_map.get(m.msg_id)
+    for m in messages:
+        if m.tokens == 0:
+            m.tokens = token_counter(m.content, m.model)
 
 
 def token_counter(text: str, model: Optional[str]) -> int:
@@ -126,45 +131,36 @@ def calculate_conversation_tokens(messages: List[Message]) -> Dict[str, Dict[str
     - Input tokens = all previous messages in the conversation
     - Output tokens = only the current assistant response
     """
-    # Group messages by conversation
-    conv_messages = defaultdict(list)
+    conv_map: Dict[str, Dict[str, Message]] = defaultdict(dict)
     for msg in messages:
-        conv_messages[msg.conv_id].append(msg)
-    
-    # Sort messages by timestamp within each conversation
-    for conv_id in conv_messages:
-        conv_messages[conv_id].sort(key=lambda x: x.create_time)
-    
-    token_data = {}
-    
-    for conv_id, msgs in conv_messages.items():
-        conversation_history = []
-        
-        for i, msg in enumerate(msgs):
-            if msg.role == "assistant":
-                # For assistant messages, input tokens = all previous context
-                # This represents the actual cost of processing the conversation history
-                context_text = "\n".join([m.content for m in conversation_history])
-                input_tokens = token_counter(context_text, msg.model)
-                output_tokens = token_counter(msg.content, msg.model)
-            elif msg.role == "user":
-                # User messages don't directly incur API costs
-                # They become part of the context for the next assistant response
-                input_tokens = 0
-                output_tokens = 0
-            else:
-                # For other roles (system, tool, etc.)
-                input_tokens = 0
-                output_tokens = 0
-            
-            token_data[msg.msg_id] = {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens
-            }
-            
-            # Add current message to conversation history for next iteration
-            conversation_history.append(msg)
-    
+        conv_map[msg.conv_id][msg.msg_id] = msg
+
+    token_data: Dict[str, Dict[str, int]] = {}
+
+    def traverse(cdict: Dict[str, Message], mid: str, context_tokens: int) -> None:
+        msg = cdict[mid]
+        msg.context_tokens = context_tokens
+        if msg.role == "assistant":
+            input_tokens = context_tokens
+            output_tokens = msg.tokens
+        else:
+            input_tokens = 0
+            output_tokens = 0
+        token_data[mid] = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }
+        next_ctx = context_tokens + msg.tokens
+        for child_id in msg.children:
+            child = cdict.get(child_id)
+            if child:
+                traverse(cdict, child_id, next_ctx)
+
+    for conv_id, cdict in conv_map.items():
+        roots = [m for m in cdict.values() if not m.parent_id or m.parent_id not in cdict]
+        for r in roots:
+            traverse(cdict, r.msg_id, 0)
+
     return token_data
 
 
@@ -191,7 +187,7 @@ def build_dataframe(messages: Iterable[Message], tz: str) -> pd.DataFrame:
                 "content_type": msg.content_type,
                 "dt": local_dt,
                 "metadata": msg.metadata,
-                "tokens": token_counter(msg.content, msg.model),
+                "tokens": msg.tokens,
                 "input_tokens": msg_tokens["input_tokens"],
                 "output_tokens": msg_tokens["output_tokens"],
             }
