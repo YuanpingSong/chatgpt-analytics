@@ -156,15 +156,12 @@ Also try to write an end-to-end test to ensure the chatgpt_analysis.py script wo
 
 Update this setion whenever a roadmap item has been completed.
 
-1. The script counts the number of convos. I want to also analyze the number of user messages sent each day since a single conversation can span multiple days.
-
-2. Counting the number of tokens used by the users - specifically, traversing the nodes in the messages graph to get a precise count of how many input/output tokens the user would consume if they were using the API.
-
-3. Model analysis - break down of user's convo/message/token count by model. What is the user's favorite model? What is the trend over time?
-
-4. Does user use advanced features such as deep research? if so, how often?
-
-5. Cost analysis - Based on token count and model analysis - is the user getting their money's worth with their chatgpt subscription? Could they have saved money by pay-per-use instead? Do a precise calculation using token count and model pricing data.
+1. ✅ The script now aggregates user messages per day in `aggregate_daily`.
+2. ✅ Implemented `calculate_conversation_tokens` to traverse message trees and compute input/output token counts.
+3. ✅ Added model-level stats via `aggregate_by_model` and `format_model_stats_display`.
+4. ✅ `detect_advanced_features` flags messages that invoke search or tool usage.
+5. ✅ Cost analysis provided by `estimate_cost` and `subscription_value`.
+   Automated tests cover these features using real sample data.
 
 ## 10  License & Attribution
 

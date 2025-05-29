@@ -12,8 +12,12 @@ import pandas as pd
 import pytz
 
 try:
-    import tiktoken
-except Exception:  # pragma: no cover - fallback when tiktoken missing or offline
+    import tiktoken  # type: ignore
+    try:  # verify encoding files are available; disable if not
+        tiktoken.get_encoding("cl100k_base")
+    except Exception:  # pragma: no cover - offline or missing data
+        tiktoken = None
+except Exception:  # pragma: no cover - fallback when tiktoken missing
     tiktoken = None
 
 MODEL_PRICING = {
