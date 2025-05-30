@@ -212,20 +212,15 @@ def build_dataframe(messages: Iterable[Message], tz: str) -> pd.DataFrame:
     return df
 
 
-def detect_advanced_features(df: pd.DataFrame) -> pd.Series:
-    def is_advanced(row: pd.Series) -> bool:
+def count_deep_research_results(df: pd.DataFrame) -> pd.Series:
+    def is_deep_research_result(row: pd.Series) -> bool:
         meta = row.get("metadata", {}) or {}
-        text = row.get("content", "") or ""
-        hints = meta.get("system_hints", [])
-        if isinstance(hints, str):
-            hints = [hints]
-        if "search" in hints or meta.get("command") == "search":
-            return True
-        if "search(" in text or row.get("role") == "tool":
-            return True
-        return False
+        is_async_task = "async_task_id" in meta
+        is_deep_research_task = is_async_task and meta["async_task_id"].startswith("deepresch_")
+        is_deep_research_result = is_async_task and meta.get("is_async_task_result_message", False)
+        return is_deep_research_result
 
-    return df.apply(is_advanced, axis=1)
+    return df.apply(is_deep_research_result, axis=1)
 
 
 def aggregate_daily(df: pd.DataFrame) -> pd.DataFrame:
@@ -270,8 +265,16 @@ def format_model_stats_display(model_stats: pd.DataFrame) -> pd.DataFrame:
 def estimate_cost(df: pd.DataFrame) -> pd.DataFrame:
     costs = []
     for model, data in df.groupby("model"):
+        # There is no API for deep research yet, we will handle it as an "advanced feature"
+        if model == "research":
+            continue
         # clean up model name
         cleaned_model_name = model.replace("-high", "").replace("-preview", "").replace("-browsing", "").replace("-plugins", "")
+        # davinci models are GPT-4 era models
+        # source: https://www.reddit.com/r/ChatGPT/comments/110f1qy/does_anybody_else_see/
+        if "davinci" in cleaned_model_name:
+            cleaned_model_name = "gpt-4"
+
         price = MODEL_PRICING.get(cleaned_model_name, {"input": 0.0, "output": 0.0})
         in_tok = data["input_tokens"].sum() / 1e6
         out_tok = data["output_tokens"].sum() / 1e6
@@ -344,6 +347,57 @@ def plot_heatmap(df: pd.DataFrame, year: int, column: str, title: str) -> None:
     plt.show()
 
 
+def plot_deep_research_by_month(df: pd.DataFrame) -> None:
+    """Plot deep research runs by month from February 2025 onward."""
+    # Filter for deep research results
+    deep_research_mask = count_deep_research_results(df)
+    deep_research_df = df[deep_research_mask].copy()
+    
+    # Filter for February 2025 onward - make timezone-aware to match DataFrame
+    start_date = datetime(2025, 2, 1, tzinfo=timezone.utc)
+    deep_research_df = deep_research_df[deep_research_df['dt'] >= start_date]
+    
+    if deep_research_df.empty:
+        print("No deep research results found from February 2025 onward.")
+        return
+    
+    # Group by month and count
+    deep_research_df['month'] = deep_research_df['dt'].dt.to_period('M')
+    monthly_counts = deep_research_df.groupby('month').size().reset_index(name='count')
+    
+    # Convert period to datetime for plotting
+    monthly_counts['month_dt'] = monthly_counts['month'].dt.to_timestamp()
+    
+    # Create the plot
+    plt.figure(figsize=(12, 6))
+    plt.bar(monthly_counts['month_dt'], monthly_counts['count'], 
+            color='steelblue', alpha=0.7, width=20)
+    
+    plt.title('Deep Research Runs by Month (Feb 2025 onward)', fontsize=14, fontweight='bold')
+    plt.xlabel('Month', fontsize=12)
+    plt.ylabel('Number of Deep Research Runs', fontsize=12)
+    
+    # Format x-axis to show month-year
+    plt.xticks(rotation=45)
+    from matplotlib.dates import DateFormatter
+    plt.gca().xaxis.set_major_formatter(DateFormatter('%b %Y'))
+    
+    # Add value labels on top of bars
+    for i, (month_dt, count) in enumerate(zip(monthly_counts['month_dt'], monthly_counts['count'])):
+        plt.text(month_dt, count + 0.1, str(count), ha='center', va='bottom', fontweight='bold')
+    
+    plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    
+    # Print summary
+    total_runs = monthly_counts['count'].sum()
+    avg_per_month = monthly_counts['count'].mean()
+    print(f"\nDeep Research Summary (Feb 2025 onward):")
+    print(f"Total runs: {total_runs}")
+    print(f"Average per month: {avg_per_month:.1f}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="ChatGPT usage analytics")
     parser.add_argument("convo_folder", help="Path to exported ChatGPT folder")
@@ -366,15 +420,14 @@ def main() -> None:
     plot_heatmap(daily, year, "conversations", f"{year} ChatGPT Conversation Heatmap")
     plot_heatmap(daily, year, "user_messages", f"{year} ChatGPT User Messages Heatmap")
 
-    advanced = detect_advanced_features(df)
-    adv_count = advanced.sum()
-    print(f"Advanced feature messages: {adv_count}")
     print("\nModel Statistics (token counts in millions):")
     print(format_model_stats_display(model_stats))
     print("\nCost Estimates:")
     print(costs)
     print("\nSubscription Value Analysis:")
     print(value)
+
+    plot_deep_research_by_month(df)
 
 
 if __name__ == "__main__":
