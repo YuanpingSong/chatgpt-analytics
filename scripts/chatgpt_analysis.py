@@ -20,8 +20,23 @@ try:
 except Exception:  # pragma: no cover - fallback when tiktoken missing
     tiktoken = None
 
+# price in USD per million tokens
+# https://openai.com/api/pricing/
 MODEL_PRICING = {
-    "gpt-4o": {"input": 0.005, "output": 0.015},
+    "gpt-4-1": {"input": 2, "output": 8},
+    "gpt-4-1-mini": {"input": 0.4, "output": 1.6},
+    "gpt-4-1-nano": {"input": 0.1, "output": 0.4},
+    "gpt-4-5": {"input": 75, "output": 150 },
+    "gpt-4o": {"input": 2.5, "output": 10 },
+    "gpt-4o-mini": {"input": 0.15, "output": 0.6 },
+    "o1": { "input": 15, "output": 60 },
+    "o1-pro": { "input": 150, "output": 600},
+    "o3": { "input": 10, "output": 40 },
+    "o4-mini": { "input": 1.1, "output": 4.4},
+    "o3-mini": { "input": 1.1, "output": 4.4},
+    "o1-mini": { "input": 1.1, "output": 4.4},
+    "codex-mini": {"input": 1.5, "output": 6},
+
     "gpt-4-turbo": {"input": 0.01, "output": 0.03},
     "gpt-4": {"input": 0.03, "output": 0.06},
     "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
@@ -255,11 +270,28 @@ def format_model_stats_display(model_stats: pd.DataFrame) -> pd.DataFrame:
 def estimate_cost(df: pd.DataFrame) -> pd.DataFrame:
     costs = []
     for model, data in df.groupby("model"):
-        price = MODEL_PRICING.get(model, {"input": 0.0, "output": 0.0})
-        in_tok = data["input_tokens"].sum()
-        out_tok = data["output_tokens"].sum()
-        cost = in_tok / 1000 * price["input"] + out_tok / 1000 * price["output"]
-        costs.append({"model": model, "input_tokens": in_tok, "output_tokens": out_tok, "cost_usd": cost})
+        # clean up model name
+        cleaned_model_name = model.replace("-high", "").replace("-preview", "").replace("-browsing", "").replace("-plugins", "")
+        price = MODEL_PRICING.get(cleaned_model_name, {"input": 0.0, "output": 0.0})
+        in_tok = data["input_tokens"].sum() / 1e6
+        out_tok = data["output_tokens"].sum() / 1e6
+        thinking_tok = 0
+
+        is_reasoning_model = model.startswith("o")
+        if is_reasoning_model:
+            # assume thinking tokens are 3 times the output tokens
+            thinking_tok = out_tok * 3
+            cost = in_tok * price["input"] + out_tok * price["output"] + thinking_tok * price["output"]
+        else:
+            cost = in_tok * price["input"] + out_tok * price["output"]
+
+        costs.append({
+            "model": model, 
+            "input_tokens (M)": round(in_tok, 3), 
+            "output_tokens (M)": round(out_tok, 3), 
+            "thinking_tokens (M)": round(thinking_tok, 3), 
+            "cost_usd": round(cost, 2)
+        })
     return pd.DataFrame(costs)
 
 
