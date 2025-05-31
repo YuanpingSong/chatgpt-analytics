@@ -162,6 +162,18 @@ Update this setion whenever a roadmap item has been completed.
 4. ✅ `detect_advanced_features` flags messages that invoke search or tool usage.
 5. ✅ Cost analysis provided by `estimate_cost` and `subscription_value`.
    Automated tests cover these features using real sample data.
+6. ✅ **Model usage over time**: Added stacked area charts showing model usage percentage over time for both messages and tokens. The implementation includes:
+   - `aggregate_by_date_and_model()` function for time-series aggregation by model
+   - `plot_model_usage_over_time()` function supporting both regular and 100% stacked area charts
+   - Command-line flag `--percentage-stacked` to toggle between chart types (defaults to regular stacked)
+   - Automatic filtering of models with <1% usage to improve readability
+   - Separate charts for message counts and token usage
+   - Summary statistics showing date range, total usage, and top models
+   - **Improved handling of sparse data**:
+     - Trims empty periods from beginning and end of date range
+     - Filters models that appear in less than 10% of periods (unless they have significant total usage)
+     - Interpolates missing values for monthly data to create smoother visualizations
+     - Sets explicit axis limits to eliminate extra whitespace
 
 ## 10  License & Attribution
 
