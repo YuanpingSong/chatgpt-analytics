@@ -181,3 +181,9 @@ samples/
 
 # macOS
 .DS_Store
+
+scripts/charts/
+scripts/convenience_scripts/
+
+# script version of analysis.ipynb for development
+scripts/analysis.py
