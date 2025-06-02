@@ -1,5 +1,7 @@
 # ChatGPT Analytics
 
+[中文版本](README_CN.md)
+
 A comprehensive analysis tool for your ChatGPT conversation data that transforms your exported conversation history into insightful visualizations and cost analysis.
 
 ## Features
