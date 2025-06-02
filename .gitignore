@@ -172,3 +172,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Put your ChatGPT export here
+chatgpt_export/
+
+# samples for local testing
+samples/
+
+# macOS
+.DS_Store
